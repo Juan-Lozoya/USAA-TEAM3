@@ -2,14 +2,24 @@ import pandas as pd
 import os
 
 class DataPreprocessor:
-    def __init__(self, input_dir="data/raw"):
-        self.input_dir = input_dir
+    def __init__(self, input_dir=None):
+        # Por defecto, usar la carpeta `data/raw` relativa a este archivo
+        if input_dir:
+            self.input_dir = input_dir
+        else:
+            base_dir = os.path.dirname(__file__)
+            self.input_dir = os.path.join(base_dir, "data", "raw")
         
     def load_and_merge_data(self):
         """Lee las tablas PIT separadas y las une en una Analytical Base Table (ABT)."""
         print("Iniciando Data Engineering pipeline...")
         
         try:
+            # Verificar existencia del directorio de entrada
+            print(f"Buscando archivos en: {self.input_dir}")
+            if not os.path.isdir(self.input_dir):
+                raise FileNotFoundError(f"Directorio no existe: {self.input_dir}")
+
             # Cargar tablas
             df_policy = pd.read_csv(os.path.join(self.input_dir, "policy.csv"))
             df_vehicle = pd.read_csv(os.path.join(self.input_dir, "vehicle.csv"))
@@ -37,7 +47,17 @@ class DataPreprocessor:
             return abt
             
         except FileNotFoundError as e:
+            # Mostrar información adicional para ayudar a depurar rutas
+            current_dir = os.path.dirname(__file__)
+            available = []
+            try:
+                available = os.listdir(current_dir)
+            except Exception:
+                available = [f"No se pudo listar {current_dir}"]
+
             print(f"❌ Error: No se encontraron los archivos fuente. {e}")
+            print(f"Buscando relativo a: {current_dir}")
+            print(f"Contenido de {current_dir}: {available}")
             return None
 
 if __name__ == "__main__":
