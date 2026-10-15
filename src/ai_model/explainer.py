@@ -6,7 +6,7 @@ import numpy as np
 
 class PremiumAIExplainer:
     def __init__(self):
-        # Configuramos un modelo XGBoost de regresión
+        # Configure an XGBoost regression model
         self.model = xgb.XGBRegressor(
             objective='reg:squarederror',
             n_estimators=100,
@@ -16,7 +16,7 @@ class PremiumAIExplainer:
         )
         self.label_encoders = {}
         
-        # Variables de entrada para el modelo (Features)
+        # Input variables for the model (features)
         self.features = [
             'policy_term_months', 'vehicle_age', 'vehicle_symbol', 
             'annual_mileage', 'driver_age', 'credit_score', 
@@ -26,11 +26,11 @@ class PremiumAIExplainer:
         self.target = 'final_premium'
 
     def preprocess_features(self, df: pd.DataFrame) -> tuple:
-        """Prepara las características, codificando variables categóricas."""
+        """Prepare features, encoding categorical variables."""
         X = df[self.features].copy()
         y = df[self.target].copy()
 
-        # Codificar la columna 'state' a valores numéricos
+        # Encode the 'state' column to numeric values
         le = LabelEncoder()
         X['state'] = le.fit_transform(X['state'])
         self.label_encoders['state'] = le
@@ -39,57 +39,57 @@ class PremiumAIExplainer:
 
     def train_and_explain(self, rated_df: pd.DataFrame) -> pd.DataFrame:
         """
-        Entrena el modelo XGBoost y calcula los valores SHAP.
-        Devuelve el DataFrame original concatenado con las contribuciones SHAP.
+        Train the XGBoost model and compute SHAP values.
+        Returns the original DataFrame concatenated with SHAP contributions.
         """
-        print("Preparando datos para el modelo de IA...")
+        print("Preparing data for AI model...")
         X, y = self.preprocess_features(rated_df)
 
-        print("Entrenando modelo XGBoost...")
+        print("Training XGBoost model...")
         self.model.fit(X, y)
 
-        # Evaluar precisión básica (R^2)
+        # Evaluate basic accuracy (R^2)
         score = self.model.score(X, y)
-        print(f"Precisión del modelo (R^2): {score:.4f}")
+        print(f"Model accuracy (R^2): {score:.4f}")
 
-        print("Calculando valores de explicabilidad (SHAP)...")
-        # TreeExplainer es altamente optimizado para modelos basados en árboles como XGBoost
+        print("Calculating explainability values (SHAP)...")
+        # TreeExplainer is highly optimized for tree-based models like XGBoost
         explainer = shap.TreeExplainer(self.model)
         shap_values = explainer.shap_values(X)
         expected_value = explainer.expected_value
 
-        # Si expected_value es un array (dependiendo de la versión de SHAP), tomamos el escalar
+        # If expected_value is an array (depending on SHAP version), take the scalar
         if isinstance(expected_value, np.ndarray):
             expected_value = expected_value[0]
 
-        # Crear un DataFrame con los valores SHAP
-        # Cada columna se llamará 'shap_<nombre_variable>'
+        # Create a DataFrame with SHAP values
+        # Each column will be named 'shap_<feature_name>'
         shap_cols = [f"shap_{col}" for col in self.features]
         df_shap = pd.DataFrame(shap_values, columns=shap_cols, index=rated_df.index)
         
-        # Agregar el valor base (el promedio predictivo global)
+        # Add base value (global predictive mean)
         df_shap['shap_base_value'] = expected_value
         
         # Validar la propiedad aditiva de SHAP: base_value + sum(shap_values) = prediction
         predictions = self.model.predict(X)
         df_shap['ai_predicted_premium'] = predictions.round(2)
 
-        # Unir el DataFrame original con las explicaciones SHAP
+        # Concatenate the original DataFrame with the SHAP explanations
         final_explained_df = pd.concat([rated_df, df_shap], axis=1)
         
-        print("✅ Explicabilidad SHAP generada con éxito.")
+        print("✅ SHAP explainability generated successfully.")
         return final_explained_df
 
 if __name__ == "__main__":
     import sys
     import os
     
-    # Imports locales de módulos previos
+    # Local imports of previous modules
     sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
     from src.data_engineering.preprocessor import DataPreprocessor
     from src.rating_engine.calculator import RatingCalculator
     
-    # 1. Pipeline de Datos
+    # 1. Data pipeline
     preprocessor = DataPreprocessor()
     df_abt = preprocessor.load_and_merge_data()
     
@@ -102,13 +102,13 @@ if __name__ == "__main__":
         ai_explainer = PremiumAIExplainer()
         df_explained = ai_explainer.train_and_explain(df_rated)
         
-        # Mostrar el desglose SHAP para la primera póliza
-        print("\nEjemplo de impacto SHAP para la póliza 0:")
+        # Show SHAP breakdown for the first policy
+        print("\nSHAP impact example for policy 0:")
         policy_0 = df_explained.iloc[0]
-        print(f"Prima Real (Rating Engine): ${policy_0['final_premium']}")
-        print(f"Prima Predicha (AI): ${policy_0['ai_predicted_premium']}")
-        print(f"Valor Base (Promedio): ${policy_0['shap_base_value']:.2f}")
+        print(f"Actual Premium (Rating Engine): ${policy_0['final_premium']}")
+        print(f"Predicted Premium (AI): ${policy_0['ai_predicted_premium']}")
+        print(f"Base Value (Mean): ${policy_0['shap_base_value']:.2f}")
         
-        print("\nImpacto por variable (SHAP):")
+        print("\nImpact per feature (SHAP):")
         for feature in ai_explainer.features:
             print(f" - {feature}: ${policy_0[f'shap_{feature}']:.2f}")
